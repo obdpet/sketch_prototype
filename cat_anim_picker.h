@@ -1,15 +1,15 @@
 #pragma once
 
 /*
-  빌드 시 포함된 애니메이션 목록을 다룹니다.
-  시리얼: list | n번호 | n파일명.gif
+  빌드에 포함된 캐릭터 팩 / 슬롯 목록.
+  시리얼: list | clist | c번호 | n번호(캐릭터) | n파일명.gif
 */
 
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include "cat_anim_driver.h"
 #include "cat_anim_profile.h"
-#include "cat_anim_registry.h"
 
 extern char g_animGifPath[80];
 
@@ -23,34 +23,67 @@ static bool leafEqualsIgnoreCase(const char* a, const char* b) {
 }
 
 inline int catAnimScanAnimationsFolder() {
-  Serial.print(F("Built-in GIFs: "));
-  Serial.println(kCatAnimationCount);
-  return kCatAnimationCount;
+  Serial.print(F("Characters: "));
+  Serial.println(kCatCharacterCount);
+  return kCatCharacterCount;
+}
+
+inline void catAnimPrintCharacterList() {
+  Serial.println(F("characters (c<idx>):"));
+  for (int i = 0; i < kCatCharacterCount; i++) {
+    Serial.print(i);
+    Serial.print(F(": "));
+    Serial.print(kCatCharacters[i].id);
+    Serial.print(F(" ["));
+    for (int s = 0; s < CAT_ANIM_SLOT_COUNT; s++) {
+      if (s) Serial.print(F(","));
+      if (kCatCharacters[i].slot[s]) {
+        Serial.print(kCatCharacters[i].slot[s]->name);
+      } else {
+        Serial.print(F("-"));
+      }
+    }
+    Serial.println(F("]"));
+  }
 }
 
 inline void catAnimPrintAnimationList() {
-  for (int i = 0; i < kCatAnimationCount; i++) {
-    Serial.print(i);
-    Serial.print(F(": "));
-    Serial.println(kCatAnimations[i].name);
-  }
-  Serial.print(F("current: "));
+  catAnimPrintCharacterList();
+  Serial.print(F("OBD km/h (playback): "));
+  Serial.println(g_catAnimObdKmh);
+  Serial.print(F("current clip: "));
   Serial.println(g_animGifPath);
 }
 
-inline bool catAnimSelectAnimationIndex(int idx) {
-  if (idx < 0 || idx >= kCatAnimationCount) return false;
-  strncpy(g_animGifPath, kCatAnimations[idx].name, sizeof(g_animGifPath) - 1);
-  g_animGifPath[sizeof(g_animGifPath) - 1] = '\0';
-  Serial.print(F("selected "));
-  Serial.println(g_animGifPath);
+inline bool catAnimSelectCharacterIndex(int idx) {
+  if (idx < 0 || idx >= kCatCharacterCount) return false;
+  g_catCharacterIndex = idx;
+  Serial.print(F("character "));
+  Serial.println(kCatCharacters[idx].id);
   return true;
 }
 
+/** 이전 API 호환: 인덱스는 캐릭터 팩 인덱스 */
+inline bool catAnimSelectAnimationIndex(int idx) { return catAnimSelectCharacterIndex(idx); }
+
 inline bool catAnimSelectAnimationByLeafName(const char* leaf) {
   if (!leaf || !leaf[0]) return false;
-  for (int i = 0; i < kCatAnimationCount; i++) {
-    if (leafEqualsIgnoreCase(kCatAnimations[i].name, leaf)) return catAnimSelectAnimationIndex(i);
+  for (int c = 0; c < kCatCharacterCount; c++) {
+    for (int s = 0; s < CAT_ANIM_SLOT_COUNT; s++) {
+      const CatAnimAsset* a = kCatCharacters[c].slot[s];
+      if (!a) continue;
+      if (!leafEqualsIgnoreCase(a->name, leaf)) continue;
+      g_catCharacterIndex = c;
+      if (s == CAT_ANIM_SLEEP || s == CAT_ANIM_IDLE)
+        g_catAnimObdKmh = 0;
+      else
+        g_catAnimObdKmh = 1;
+      Serial.print(F("character "));
+      Serial.print(kCatCharacters[c].id);
+      Serial.print(F(" clip "));
+      Serial.println(a->name);
+      return true;
+    }
   }
   Serial.print(F("not found: "));
   Serial.println(leaf);
@@ -58,7 +91,6 @@ inline bool catAnimSelectAnimationByLeafName(const char* leaf) {
 }
 
 inline void catAnimEnsureDefaultPath() {
-  if (g_animGifPath[0] != '\0') return;
-  strncpy(g_animGifPath, CAT_DEFAULT_GIF_LEAF, sizeof(g_animGifPath) - 1);
-  g_animGifPath[sizeof(g_animGifPath) - 1] = '\0';
+  if (g_catCharacterIndex >= 0 && g_catCharacterIndex < kCatCharacterCount) return;
+  g_catCharacterIndex = CAT_DEFAULT_CHARACTER_INDEX;
 }

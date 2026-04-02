@@ -63,10 +63,14 @@ static uint16_t catAnimProcessColor(uint16_t color) {
 
 static const CatAnimAsset* catAnimLookupCurrent() {
   catAnimEnsureDefaultPath();
-  for (int i = 0; i < kCatAnimationCount; i++) {
-    if (strcmp(g_animGifPath, kCatAnimations[i].name) == 0) return &kCatAnimations[i];
+  const CatAnimAsset* a = catAnimPeekPlayingAsset();
+  if (a && a->name) {
+    strncpy(g_animGifPath, a->name, sizeof(g_animGifPath) - 1);
+    g_animGifPath[sizeof(g_animGifPath) - 1] = '\0';
+  } else {
+    g_animGifPath[0] = '\0';
   }
-  return nullptr;
+  return a;
 }
 
 static uint16_t catAnimAverage565Four(uint16_t c0, uint16_t c1, uint16_t c2, uint16_t c3) {
@@ -134,8 +138,17 @@ static void catAnimDrawFrame(TFT_eSprite& sprite, const CatAnimAsset& anim, int 
   }
 
   // 부동소수 스케일로 가로·세로 동일 비율 유지(정수/1000 방식보다 왜곡 적음)
+  bool scaleWidthToSprite = false;
 #if CAT_ANIM_FIT_CONTAIN
   float factor = fminf((float)sw / (float)anim.width, (float)sh / (float)anim.height);
+  {
+    const int preW = (int)lroundf((float)anim.width * factor);
+    // contain 결과 가로가 스프라이트보다 작으면 가로를 sw에 맞춤(비율 유지, 세로는 레터박스 또는 상하 크롭)
+    if (preW < sw) {
+      factor = (float)sw / (float)anim.width;
+      scaleWidthToSprite = true;
+    }
+  }
 #else
   float factor = fmaxf((float)sw / (float)anim.width, (float)sh / (float)anim.height);
 #endif
@@ -145,8 +158,12 @@ static void catAnimDrawFrame(TFT_eSprite& sprite, const CatAnimAsset& anim, int 
   if (scaledW < 1) scaledW = 1;
   if (scaledH < 1) scaledH = 1;
 #if CAT_ANIM_FIT_CONTAIN
-  if (scaledW > sw) scaledW = sw;
-  if (scaledH > sh) scaledH = sh;
+  if (scaleWidthToSprite) {
+    scaledW = sw;
+  } else {
+    if (scaledW > sw) scaledW = sw;
+    if (scaledH > sh) scaledH = sh;
+  }
 #endif
   int offX = (sw - scaledW) / 2;
   int offY = (sh - scaledH) / 2;
@@ -191,11 +208,23 @@ inline void catAnimReset() {
 inline bool catAnimBeginFS() {
   catAnimReset();
   catAnimScanAnimationsFolder();
+  if (g_catCharacterIndex < 0 || g_catCharacterIndex >= kCatCharacterCount) {
+    g_catCharacterIndex = CAT_DEFAULT_CHARACTER_INDEX;
+  }
   catAnimEnsureDefaultPath();
   return true;
 }
 
 inline void catAnimOnPathChanged() { catAnimReset(); }
+
+/** OBD(또는 시뮬 속도) km/h — 0이면 정지 계열 슬롯, 0 초과면 주행 계열 */
+inline void catAnimSetObdKmh(int kmh) { g_catAnimObdKmh = kmh; }
+
+inline void catAnimSetCharacterIndex(int idx) {
+  if (idx < 0 || idx >= kCatCharacterCount) return;
+  g_catCharacterIndex = idx;
+  catAnimOnPathChanged();
+}
 
 inline void catAnimDraw(TFT_eSprite& sprite, uint16_t bgColor, bool advanceFrame) {
   const CatAnimAsset* anim = catAnimLookupCurrent();

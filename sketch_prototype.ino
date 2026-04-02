@@ -1,4 +1,4 @@
-// RGB565 애니메이션. 시리얼: 0-120 속도
+// RGB565 애니메이션. 시리얼: 속도(km/h)→OBD 흉내(catAnimSetObdKmh), list/clist, c<캐릭터>
 //
 // [240×320 패널 + 오른쪽 노이즈]
 // TFT_eSPI User_Setup.h: ST7789 기준 물리 픽셀은 보통
@@ -16,6 +16,8 @@
 #include "cat_animation.h"
 
 char g_animGifPath[80] = "";
+int g_catCharacterIndex = CAT_DEFAULT_CHARACTER_INDEX;
+int g_catAnimObdKmh = 0;
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite sprite = TFT_eSprite(&tft);
@@ -71,6 +73,8 @@ static bool createAnimSpriteWithFallback() {
   return false;
 }
 
+static constexpr int kSpeedMax = 120;
+
 int currentSpeed = 30;
 unsigned long lastFrameTime = 0;
 
@@ -83,23 +87,32 @@ static void paintTftGuttersOnce() {
   if (!isSpriteFullBleed()) tft.fillScreen(catAnimGetBorderColorStable(BG_COLOR));
 }
 
+// 폰트4 기준 "Speed:200" 넉넉히 덮음 — 이전 자릿수 잔상 방지
+static constexpr int kHudX = 4;
+static constexpr int kHudY = 4;
+static constexpr int kHudW = 132;
+static constexpr int kHudH = 34;
+
 /** 왼쪽 상단 현재 속도(기본 폰트는 ASCII만 안정적이라 라벨은 영문 축약). */
 static void drawSpeedHudOnSprite() {
+  sprite.fillRect(kHudX, kHudY, kHudW, kHudH, BG_COLOR);
   char buf[20];
   snprintf(buf, sizeof(buf), "Speed:%3d", currentSpeed);
   sprite.setTextFont(4);
   sprite.setTextDatum(TL_DATUM);
   sprite.setTextColor(TFT_WHITE, BG_COLOR);
-  sprite.drawString(buf, 4, 4);
+  sprite.drawString(buf, kHudX, kHudY);
 }
 
 static void drawSpeedHudOnTft() {
+  uint16_t bg = catAnimGetBorderColorStable(BG_COLOR);
+  tft.fillRect(kHudX, kHudY, kHudW, kHudH, bg);
   char buf[20];
   snprintf(buf, sizeof(buf), "Speed:%3d", currentSpeed);
   tft.setTextFont(4);
   tft.setTextDatum(TL_DATUM);
-  tft.setTextColor(TFT_WHITE, catAnimGetBorderColorStable(BG_COLOR));
-  tft.drawString(buf, 4, 4);
+  tft.setTextColor(TFT_WHITE, bg);
+  tft.drawString(buf, kHudX, kHudY);
 }
 
 static void presentAnimFrame() {
@@ -141,29 +154,46 @@ void loop() {
     String line = Serial.readStringUntil('\n');
     line.trim();
     if (line.length() > 0) {
-      if (line.equalsIgnoreCase("list")) {
+      if (line.equalsIgnoreCase("list") || line.equalsIgnoreCase("clist")) {
         catAnimPrintAnimationList();
+      } else if (line.length() > 1 && (line[0] == 'c' || line[0] == 'C')) {
+        String rest = line.substring(1);
+        rest.trim();
+        if (rest.length() > 0 && isdigit((unsigned char)rest[0])) {
+          if (catAnimSelectCharacterIndex(rest.toInt())) {
+            catAnimOnPathChanged();
+            paintTftGuttersOnce();
+            presentAnimFrame();
+          }
+        }
       } else if (line.length() > 1 && (line[0] == 'n' || line[0] == 'N')) {
         String rest = line.substring(1);
         rest.trim();
         if (rest.length() > 0) {
           if (rest.indexOf('.') >= 0) {
-            catAnimSelectAnimationByLeafName(rest.c_str());
+            if (catAnimSelectAnimationByLeafName(rest.c_str())) {
+              catAnimOnPathChanged();
+              paintTftGuttersOnce();
+              presentAnimFrame();
+            }
           } else {
-            catAnimSelectAnimationIndex(rest.toInt());
+            if (catAnimSelectAnimationIndex(rest.toInt())) {
+              catAnimOnPathChanged();
+              paintTftGuttersOnce();
+              presentAnimFrame();
+            }
           }
-          catAnimOnPathChanged();
-          paintTftGuttersOnce();
-          presentAnimFrame();
         }
       } else if (line[0] == '-' || isdigit((unsigned char)line[0])) {
-        currentSpeed = constrain(line.toInt(), 0, 120);
+        currentSpeed = constrain(line.toInt(), 0, kSpeedMax);
       }
     }
   }
 
+  catAnimSetObdKmh(currentSpeed);
+
   unsigned long now = millis();
-  int delay_ms = map(currentSpeed, 1, 120, 400, 40);
+  int delay_ms = map(currentSpeed, 1, kSpeedMax, 400, 40);
 
   if (now - lastFrameTime >= delay_ms) {
     lastFrameTime = now;
