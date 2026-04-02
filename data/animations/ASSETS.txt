@@ -1,0 +1,23 @@
+/animations 레이아웃 (프로필 p3)
+===============================
+
+[1] 캐릭터 팩 — 하위 폴더 하나 = 캐릭터
+  /animations/nyan/sleep.gif
+  /animations/nyan/walk.gif
+  /animations/nyan/fast_walk.gif
+  /animations/nyan/run.gif
+  /animations/nyan/turbo.gif
+  /animations/nyan/brake.gif
+
+  특정 상태 파일이 없으면 순서대로 대체:
+  → 같은 폴더의 loop.gif
+  → 없으면 default.gif
+
+  지금은 sleep.gif만 있고 나머지가 없어도, 전부 loop.gif(또는 default.gif)로
+  같은 애니메이션이 나오게 됩니다.
+
+[2] 루트 단일 GIF (이전 방식)
+  /animations/foo.gif
+  → 모든 주행 상태에서 이 GIF 하나만 사용 (수면 시 프레임만 정지)
+
+시리얼: list → [pack] 폴더명 / 파일명 목록 | n번호 로 선택
