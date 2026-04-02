@@ -1,0 +1,44 @@
+/animations 레이아웃 (캐릭터 팩 + PROGMEM 빌드)
+============================================
+
+[플래시] ESP32에 한 캐릭터만 올리기
+  PROGMEM은 “컴파일에 포함된 헤더”만 플래시를 씁니다.
+  cat_anim_profile.h 에서:
+    #define CAT_EMBED_PACK 1   ← mario만
+    #define CAT_EMBED_PACK 2   ← nyan만
+    #define CAT_EMBED_PACK 3   ← cjemoj만
+    #define CAT_EMBED_PACK 0   ← 전부(개발)
+  이후 스케치를 다시 컴파일·업로드하면 다른 캐릭터용 바이너리는 펌웨어에 없습니다.
+  (Arduino IDE: 파일 상단에 -DCAT_EMBED_PACK=2 를 넣으려면 보드 설정의
+   “컴파일 옵션”이 있다면 거기서 정의할 수 있습니다.)
+  gif_to_rgb565.py 는 선택한 폴더 GIF에 대해서만 돌려도 됩니다.
+  generated/<캐릭터>/ 에 다른 .h 가 남아 있어도, #include 가 안 되면 링크되지 않습니다.
+
+[권장] 캐릭터별 폴더
+  data/animations/{character_id}/sleep.gif   ← 정지(OBD==0) 우선
+  data/animations/{character_id}/run.gif     ← 주행(OBD>0) 우선
+  (확장) idle.gif, error.gif 등은 코드의 CatAnimSlot 순서와 맞춰
+         cat_anim_registry.h 의 slot[]에 추가합니다.
+
+GIF → 헤더 (출력은 generated/<캐릭터_id>/ 권장)
+  python tools/gif_to_rgb565.py data/animations/nyan/sleep.gif generated/nyan/anim_nyan_sleep.h --width 112 --height 98
+  python tools/gif_to_rgb565.py data/animations/nyan/run.gif   generated/nyan/anim_nyan_run.h   --width 112 --height 98
+
+레지스트리
+  cat_anim_registry.h 에 CatAnimAsset 래퍼와 CatCharacterPack 한 줄을 추가합니다.
+  예: {"nyan", { &kAssetNyanSleep, &kAssetNyanRun, nullptr, nullptr }}
+
+재생 칙 (cat_anim_driver.h)
+  • 폴더(팩)에 실제로 연결된 클립이 1개뿐이면 → OBD와 무관하게 그 GIF만 반복
+  • 2개 이상이면 → OBD==0 이면 SLEEP→IDLE→RUN 순으로 있는 것만 재생,
+                  OBD>0 이면 RUN→IDLE→SLEEP 순
+
+기본 캐릭터
+  cat_anim_profile.h 의 CAT_DEFAULT_CHARACTER_INDEX (0부터)
+
+시리얼
+  list | clist … 캐릭터·슬롯·현재 클립
+  c0, c1, … … 캐릭터 선택
+  n0 … (구호환) 캐릭터 인덱스 선택
+  n파일명.gif … 해당 클립이 속한 캐릭터로 전환 + 슬롯에 맞게 OBD 힌트
+  숫자 한 줄 … 속도 시뮬(내부에서 catAnimSetObdKmh 로 전달)
